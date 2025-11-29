@@ -28,5 +28,6 @@ To provide an all-in-one decoding solution that is fast, accurate, and easy to u
 
 ---
 
-## 📌 Author
-Created by **bar**, a passionate learner who loves the beauty of programming and keeps improving every day.  
+## 👤 Author
+**bar** — A passionate learner who loves the beauty of programming and is always working to improve and grow.
+
