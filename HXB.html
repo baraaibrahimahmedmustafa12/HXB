@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Decoder — bar</title>
+  <style>
+    body{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:#f6f8fb; color:#0f172a; display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .card{background:white;border-radius:12px;box-shadow:0 6px 24px rgba(15,23,42,0.08);width:900px;max-width:100%;padding:20px}
+    h1{margin:0 0 6px;font-size:20px}
+    p.note{margin:0 0 12px;color:#475569}
+    textarea{width:100%;min-height:120px;border:1px solid #e6eef8;padding:12px;border-radius:8px;resize:vertical;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace}
+    .row{display:flex;gap:8px;align-items:center;margin-top:12px}
+    .btn{background:#0ea5a4;color:white;padding:10px 12px;border-radius:10px;border:none;cursor:pointer}
+    .btn.secondary{background:#64748b}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .small{font-size:13px;color:#334155}
+    .output{white-space:pre-wrap;background:#0f172a;color:#e6eef8;padding:12px;border-radius:8px;margin-top:12px;min-height:120px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace}
+    .foot{margin-top:12px;font-size:13px;color:#64748b}
+    label{display:flex;gap:8px;align-items:center}
+    input[type=file]{display:inline-block}
+    select{padding:8px;border-radius:8px;border:1px solid #e6eef8}
+    .hint{font-size:13px;color:#475569;margin-top:6px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Simple Decoder</h1>
+    <p class="note">Paste encoded text below and press <strong>Decode</strong>. Choose type or leave on <strong>Auto</strong> for the tool to detect (Base64 / Hex / ROT13 / Caesar / URL-safe).</p>
+
+    <label class="small">Input</label>
+    <textarea id="input" placeholder="Paste encoded string here..."></textarea>
+    <div class="hint">Tip: you can also choose a file containing the encoded text using Choose file.</div>
+
+    <div class="row controls">
+      <button class="btn" id="decodeBtn">Decode</button>
+      <button class="btn secondary" id="clearBtn">Clear</button>
+      <button class="btn secondary" id="copyBtn">Copy output</button>
+
+      <label title="If the data is URL-safe base64">
+        <input type="checkbox" id="urlsafe"> URL-safe
+      </label>
+
+      <label>
+        <select id="modeSelect">
+          <option value="auto">Auto-detect</option>
+          <option value="base64">Base64</option>
+          <option value="hex">Hex</option>
+          <option value="rot13">ROT13</option>
+          <option value="caesar">Caesar (shift 5)</option>
+        </select>
+      </label>
+
+      <label title="If the data is a file encoded to base64/hex, you can download it">
+        <input type="file" id="fileInput" accept="*/*"> Choose file (optional)
+      </label>
+    </div>
+
+    <div id="output" class="output" aria-live="polite"></div>
+
+    <p class="foot">If the decoded data is binary (images, zip...), the tool will show a download link. Auto-detection prefers Hex when the input contains only hex chars and even length.</p>
+  </div>
+
+<script>
+  const input = document.getElementById('input');
+  const output = document.getElementById('output');
+  const decodeBtn = document.getElementById('decodeBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const copyBtn = document.getElementById('copyBtn');
+  const urlsafeChk = document.getElementById('urlsafe');
+  const fileInput = document.getElementById('fileInput');
+  const modeSelect = document.getElementById('modeSelect');
+
+  function isHexString(s) {
+    const onlyHex = /^[0-9a-fA-F\s]+$/.test(s);
+    const cleaned = s.replace(/\s+/g, '');
+    return onlyHex && (cleaned.length % 2 === 0) && cleaned.length > 0;
+  }
+
+  function isLikelyBase64(s) {
+    // allow urlsafe chars too
+    const cleaned = s.trim();
+    if (cleaned.length === 0) return false;
+    // base64 chars (with optional = padding)
+    const b64re = /^[A-Za-z0-9+\/=_\-\s]+$/;
+    if (!b64re.test(cleaned)) return false;
+    const noSpaces = cleaned.replace(/\s+/g, '');
+    // length mod 4 should be 0 or 2/3 (will be padded)
+    return noSpaces.length % 4 !== 1;
+  }
+
+  function fromHexString(hex) {
+    const clean = hex.replace(/\s+/g, '');
+    const len = clean.length / 2;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = parseInt(clean.substr(i*2, 2), 16);
+    }
+    return bytes;
+  }
+
+  function toUint8ArrayFromBase64(b64) {
+    // atob can throw
+    const binary = atob(b64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  function isProbablyText(bytes) {
+    if (!bytes || bytes.length === 0) return true;
+    let printable = 0;
+    for (let i = 0; i < bytes.length && i < 200; i++) {
+      const b = bytes[i];
+      if (b === 9 || b === 10 || b === 13) printable++;
+      else if (b >= 32 && b <= 126) printable++;
+    }
+    return (printable / Math.min(bytes.length, 200)) > 0.6;
+  }
+
+  function decodeTextBytes(bytes) {
+    try {
+      return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    } catch (e) {
+      return new TextDecoder().decode(bytes);
+    }
+  }
+
+  function decodeBase64String(raw, urlsafe) {
+    let b64 = raw.trim();
+    if (urlsafe) {
+      b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+    }
+    // remove whitespace
+    b64 = b64.replace(/\s+/g, '');
+    const pad = b64.length % 4;
+    if (pad === 1) throw new Error('Invalid base64 length');
+    if (pad > 0) b64 += '='.repeat(4 - pad);
+    return toUint8ArrayFromBase64(b64);
+  }
+
+  function decodeAuto(raw, mode, urlsafe) {
+    const trimmed = raw.trim();
+    if (!trimmed) throw new Error('Empty input');
+
+    // priority: if user forced a mode, use it
+    if (mode === 'hex' || isHexString(trimmed) && mode === 'auto') {
+      return fromHexString(trimmed);
+    }
+
+    if (mode === 'base64' || (isLikelyBase64(trimmed) && mode === 'auto')) {
+      return decodeBase64String(trimmed, urlsafe);
+    }
+
+    if (mode === 'rot13') {
+      const out = trimmed.replace(/[A-Za-z]/g, (c) => {
+        const base = c <= 'Z' ? 65 : 97;
+        return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base);
+      });
+      return new TextEncoder().encode(out);
+    }
+
+    if (mode === 'caesar') {
+      // Caesar shift 5 -> decode by shifting -5
+      const out = trimmed.replace(/[A-Za-z]/g, (c) => {
+        const base = c <= 'Z' ? 65 : 97;
+        return String.fromCharCode(((c.charCodeAt(0) - base - 5 + 26) % 26) + base);
+      });
+      return new TextEncoder().encode(out);
+    }
+
+    // fallback: return raw bytes of the string
+    return new TextEncoder().encode(trimmed);
+  }
+
+  function handleDecodedBytes(bytes) {
+    if (isProbablyText(bytes)) {
+      return decodeTextBytes(bytes);
+    } else {
+      const blob = new Blob([bytes]);
+      const url = URL.createObjectURL(blob);
+      return `[BINARY DATA] Decoded ${bytes.length} bytes. Download: ${url}`;
+    }
+  }
+
+  decodeBtn.addEventListener('click', () => {
+    const mode = modeSelect.value;
+    const urlsafe = urlsafeChk.checked;
+    const file = fileInput.files[0];
+
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const text = String(reader.result || '');
+          const bytes = decodeAuto(text, mode, urlsafe);
+          output.textContent = handleDecodedBytes(bytes);
+        } catch (e) {
+          output.textContent = 'Error: ' + e.message;
+        }
+      };
+      reader.onerror = () => output.textContent = 'Could not read file.';
+      reader.readAsText(file);
+      return;
+    }
+
+    const text = input.value;
+    if (!text) { output.textContent = 'Please paste encoded text or choose a file.'; return; }
+
+    try {
+      const bytes = decodeAuto(text, mode, urlsafe);
+      output.textContent = handleDecodedBytes(bytes);
+    } catch (err) {
+      output.textContent = 'Error: ' + err.message;
+    }
+  });
+
+  clearBtn.addEventListener('click', () => { input.value = ''; output.textContent = ''; fileInput.value = ''; urlsafeChk.checked = false; modeSelect.value = 'auto'; });
+
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(output.textContent);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => copyBtn.textContent = 'Copy output', 1500);
+    } catch (e) {
+      copyBtn.textContent = 'Failed to copy';
+      setTimeout(() => copyBtn.textContent = 'Copy output', 1500);
+    }
+  });
+
+  // convenience: decode on Ctrl+Enter
+  input.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'Enter') decodeBtn.click(); });
+</script>
+</body>
+</html>
