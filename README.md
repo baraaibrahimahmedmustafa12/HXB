@@ -29,5 +29,5 @@ To provide an all-in-one decoding solution that is fast, accurate, and easy to u
 ---
 
 ## 👤 Author
-**bar** — A passionate learner who loves the beauty of programming and is always working to improve and grow.
+**Baraa** — A passionate learner who loves the beauty of programming and is always working to improve and grow.
 
