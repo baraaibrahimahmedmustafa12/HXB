@@ -1,4 +1,4 @@
-# 🔎 DecodeX — Universal Decoder Tool 
+# 🔎 DecodeX — Universal Decoder Tool  
 
 **DecodeX** is a fast, lightweight, and user-friendly tool designed to decode multiple data formats with accuracy and ease.  
 It features auto-detection, clean UI, and multi-cipher support — making it perfect for developers, CTF players, and anyone dealing with encoded data.
